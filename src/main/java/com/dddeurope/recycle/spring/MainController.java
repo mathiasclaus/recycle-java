@@ -2,6 +2,7 @@ package com.dddeurope.recycle.spring;
 
 import com.dddeurope.recycle.commands.CalculatePrice;
 import com.dddeurope.recycle.commands.CommandMessage;
+import com.dddeurope.recycle.domain.Cities;
 import com.dddeurope.recycle.domain.DroppedFraction;
 import com.dddeurope.recycle.domain.Fraction;
 import com.dddeurope.recycle.events.EventMessage;
@@ -52,6 +53,7 @@ public class MainController {
     }
 
     private double calculateTotalCost(RecycleRequest request) {
+
         var history = request.history();
         List<FractionWasDropped> fractionWasDroppedEvents = history.stream()
             .filter(event -> "FractionWasDropped".equals(event.getType()))
@@ -62,15 +64,18 @@ public class MainController {
             .map(this::mapToDroppedFraction)
             .toList();
 
-        var totalCost = droppedFractions.stream().mapToDouble(DroppedFraction::calculateCost).sum();
+        var totalCost = droppedFractions.stream()
+            .mapToDouble(DroppedFraction::calculateCost)
+            .sum();
+
         return roundTwoDecimals(totalCost);
     }
 
     private DroppedFraction mapToDroppedFraction(FractionWasDropped event) {
         return Arrays.stream(Fraction.values())
-            .filter(fraction -> fraction.getTyoe().equals(event.fractionType()))
+            .filter(fraction -> fraction.getType().equals(event.fractionType()))
             .findFirst()
-            .map(it -> new DroppedFraction(it, event.weight()))
+            .map(it -> new DroppedFraction(it, event.weight(), Cities.find("bliep")))
             .orElseThrow();
     }
 

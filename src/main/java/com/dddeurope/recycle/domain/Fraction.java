@@ -1,22 +1,16 @@
 package com.dddeurope.recycle.domain;
 
 public enum Fraction {
-    CONSTRUCTION_WASTE("Construction waste", 0.15),
-    GREEN_WASTE("Green waste", 0.09);
+    CONSTRUCTION_WASTE("Construction waste"),
+    GREEN_WASTE("Green waste");
 
-    private final String tyoe;
-    private final double costPerKg;
+    private final String type;
 
-    Fraction(String tyoe, double costPerKg) {
-        this.tyoe = tyoe;
-        this.costPerKg = costPerKg;
+    Fraction(String type) {
+        this.type = type;
     }
 
-    public String getTyoe() {
-        return tyoe;
-    }
-
-    public double getCostPerKg() {
-        return costPerKg;
+    public String getType() {
+        return type;
     }
 }
