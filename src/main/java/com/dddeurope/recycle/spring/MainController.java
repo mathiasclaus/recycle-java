@@ -2,11 +2,13 @@ package com.dddeurope.recycle.spring;
 
 import com.dddeurope.recycle.commands.CalculatePrice;
 import com.dddeurope.recycle.commands.CommandMessage;
-import com.dddeurope.recycle.domain.Cities;
+import com.dddeurope.recycle.domain.ContainerParks;
+import com.dddeurope.recycle.domain.ContainerPark;
 import com.dddeurope.recycle.domain.DroppedFraction;
 import com.dddeurope.recycle.domain.Fraction;
 import com.dddeurope.recycle.events.EventMessage;
 import com.dddeurope.recycle.events.FractionWasDropped;
+import com.dddeurope.recycle.events.IdCardRegistered;
 import com.dddeurope.recycle.events.PriceWasCalculated;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,8 +18,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -37,7 +37,10 @@ public class MainController {
         LOGGER.info("Incoming Request: {}", request.asString());
 
         var cardId = getCardId(request);
-        var cost = calculateTotalCost(request);
+        var containerPark = determineContainerPark(request, cardId);
+        var droppedFractions = getDroppedFractions(request);
+
+        var cost = containerPark.calculateTotalCost(droppedFractions);
 
         var message = new EventMessage("todo", new PriceWasCalculated(cardId, cost, "EUR"));
 
@@ -52,36 +55,35 @@ public class MainController {
         throw new RuntimeException("Could not find card id");
     }
 
-    private double calculateTotalCost(RecycleRequest request) {
+    private ContainerPark determineContainerPark(RecycleRequest request, String cardId) {
+        return request.history.stream()
+            .filter(event -> "IdCardRegistered".equals(event.getType()))
+            .map(event -> (IdCardRegistered) event.getPayload())
+            .filter(event -> event.cardId().equals(cardId))
+            .findFirst()
+            .map(payload -> ContainerParks.find(payload.city()))
+            .orElseThrow();
+    }
 
-        var history = request.history();
-        List<FractionWasDropped> fractionWasDroppedEvents = history.stream()
+    private List<DroppedFraction> getDroppedFractions(RecycleRequest request) {
+        var fractionWasDroppedEvents = request.history.stream()
             .filter(event -> "FractionWasDropped".equals(event.getType()))
             .map(event -> (FractionWasDropped) event.getPayload())
             .toList();
 
-        var droppedFractions = fractionWasDroppedEvents.stream()
+        return fractionWasDroppedEvents.stream()
             .map(this::mapToDroppedFraction)
             .toList();
-
-        var totalCost = droppedFractions.stream()
-            .mapToDouble(DroppedFraction::calculateCost)
-            .sum();
-
-        return roundTwoDecimals(totalCost);
     }
 
     private DroppedFraction mapToDroppedFraction(FractionWasDropped event) {
         return Arrays.stream(Fraction.values())
             .filter(fraction -> fraction.getType().equals(event.fractionType()))
             .findFirst()
-            .map(it -> new DroppedFraction(it, event.weight(), Cities.find("bliep")))
+            .map(fraction -> new DroppedFraction(fraction, event.weight()))
             .orElseThrow();
     }
 
-    private static double roundTwoDecimals(double totalCost) {
-        return BigDecimal.valueOf(totalCost).setScale(2, RoundingMode.HALF_UP).doubleValue();
-    }
 
     public record RecycleRequest(List<EventMessage> history, CommandMessage command) {
 
