@@ -1,6 +1,8 @@
 package com.dddeurope.recycle.spring;
 
 import com.dddeurope.recycle.commands.CommandMessage;
+import com.dddeurope.recycle.domain.DroppedFraction;
+import com.dddeurope.recycle.domain.Fraction;
 import com.dddeurope.recycle.events.EventMessage;
 import com.dddeurope.recycle.events.FractionWasDropped;
 import com.dddeurope.recycle.events.PriceWasCalculated;
@@ -12,6 +14,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,7 +24,6 @@ import java.util.stream.Collectors;
 public class MainController {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MainController.class);
-    private static final double CONSTRUCTION_WASTE_COST = 0.15;
 
     @GetMapping("/validate")
     public String validate() {
@@ -30,26 +34,38 @@ public class MainController {
     public ResponseEntity<EventMessage> handle(@RequestBody RecycleRequest request) {
         LOGGER.info("Incoming Request: {}", request.asString());
 
-        var cost = processRequest(request);
+        var cost = calculateTotalCost(request);
 
         var message = new EventMessage("todo", new PriceWasCalculated("123", cost, "EUR"));
 
         return ResponseEntity.ok(message);
     }
 
-    private double processRequest(RecycleRequest request) {
+    private double calculateTotalCost(RecycleRequest request) {
         var history = request.history();
         List<FractionWasDropped> fractionWasDroppedEvents = history.stream()
             .filter(event -> "FractionWasDropped".equals(event.getType()))
             .map(event -> (FractionWasDropped) event.getPayload())
             .toList();
 
-        var constructionWasteWeight = fractionWasDroppedEvents.stream()
-            .filter(event -> "Construction waste".equals(event.fractionType()))
-            .mapToDouble(FractionWasDropped::weight)
-            .sum();
+        var droppedFractions = fractionWasDroppedEvents.stream()
+            .map(this::mapToDroppedFraction)
+            .toList();
 
-        return constructionWasteWeight * CONSTRUCTION_WASTE_COST;
+        var totalCost = droppedFractions.stream().mapToDouble(DroppedFraction::calculateCost).sum();
+        return roundTwoDecimals(totalCost);
+    }
+
+    private DroppedFraction mapToDroppedFraction(FractionWasDropped event) {
+       return Arrays.stream(Fraction.values())
+           .filter(fraction -> fraction.getTyoe().equals(event.fractionType()))
+           .findFirst()
+           .map(it -> new DroppedFraction(it, event.weight()))
+           .orElseThrow();
+    }
+
+    private static double roundTwoDecimals(double totalCost) {
+        return BigDecimal.valueOf(totalCost).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
     public record RecycleRequest(List<EventMessage> history, CommandMessage command) {
