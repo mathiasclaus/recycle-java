@@ -1,5 +1,6 @@
 package com.dddeurope.recycle.spring;
 
+import com.dddeurope.recycle.commands.CalculatePrice;
 import com.dddeurope.recycle.commands.CommandMessage;
 import com.dddeurope.recycle.domain.DroppedFraction;
 import com.dddeurope.recycle.domain.Fraction;
@@ -34,11 +35,20 @@ public class MainController {
     public ResponseEntity<EventMessage> handle(@RequestBody RecycleRequest request) {
         LOGGER.info("Incoming Request: {}", request.asString());
 
+        var cardId = getCardId(request);
         var cost = calculateTotalCost(request);
 
-        var message = new EventMessage("todo", new PriceWasCalculated("123", cost, "EUR"));
+        var message = new EventMessage("todo", new PriceWasCalculated(cardId, cost, "EUR"));
 
         return ResponseEntity.ok(message);
+    }
+
+    private String getCardId(RecycleRequest request) {
+        var payload = request.command.getPayload();
+        if (payload instanceof CalculatePrice calculatePrice) {
+            return calculatePrice.cardId();
+        }
+        throw new RuntimeException("Could not find card id");
     }
 
     private double calculateTotalCost(RecycleRequest request) {
@@ -57,11 +67,11 @@ public class MainController {
     }
 
     private DroppedFraction mapToDroppedFraction(FractionWasDropped event) {
-       return Arrays.stream(Fraction.values())
-           .filter(fraction -> fraction.getTyoe().equals(event.fractionType()))
-           .findFirst()
-           .map(it -> new DroppedFraction(it, event.weight()))
-           .orElseThrow();
+        return Arrays.stream(Fraction.values())
+            .filter(fraction -> fraction.getTyoe().equals(event.fractionType()))
+            .findFirst()
+            .map(it -> new DroppedFraction(it, event.weight()))
+            .orElseThrow();
     }
 
     private static double roundTwoDecimals(double totalCost) {
